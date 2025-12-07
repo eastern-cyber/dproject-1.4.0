@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import dprojectIcon from "../../../../public/DProjectLogo_650x600.svg";
+import dprojectIcon from "@/public/DProjectLogo_650x600.svg";
 import WalletConnect from "@/components/WalletConnect";
 import Footer from "@/components/Footer";
 

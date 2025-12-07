@@ -3,7 +3,7 @@
 
 import Image from "next/image";
 import { MediaRenderer, useActiveAccount, useReadContract } from "thirdweb/react";
-import dprojectIcon from "/public/DProjectLogo_650x600.svg";
+import dprojectIcon from "@/public/DProjectLogo_650x600.svg";
 import { client } from "@/lib/client";
 import { getContract, toEther } from "thirdweb";
 import { defineChain, polygon } from "thirdweb/chains";

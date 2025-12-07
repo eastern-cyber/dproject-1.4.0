@@ -4,7 +4,7 @@
 import React, { useEffect, useState } from 'react'
 import Image from "next/image";
 import { useActiveAccount } from "thirdweb/react";
-import dprojectIcon from "../../../public/DProjectLogo_650x600.svg";
+import dprojectIcon from "@/public/DProjectLogo_650x600.svg";
 import Link from 'next/link';
 import WalletConnect from '@/components/WalletConnect';
 import Footer from '@/components/Footer';
