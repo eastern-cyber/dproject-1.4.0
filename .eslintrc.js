@@ -1,7 +1,8 @@
+
 module.exports = {
   extends: ['next/core-web-vitals'],
   rules: {
-    // Add your rules here
+    // Your rules here
   },
   ignoreDuringBuilds: true,
 };
