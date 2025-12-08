@@ -20,9 +20,10 @@
         "name": "next"
       }
     ],
+    "baseUrl": ".",  // ✅ ADD THIS
     "paths": {
       "@/*": ["./src/*"],
-      "@public/*": ["@public/*"]
+      "@public/*": ["./public/*"]
     }
   },
   "include": ["src/**/*", "*.d.ts", "next-env.d.ts", "**/*.ts", "**/*.tsx", ".next/types/**/*.ts", "src/app/referrer/[referrerId]/page.tsx.bak", "src/app/bonus/page.tsx.bak3"],
