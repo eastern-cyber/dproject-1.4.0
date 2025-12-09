@@ -1,5 +1,4 @@
 // src/app/d1/page.tsx
-
 "use client";
 import React, { useEffect, useState } from 'react'
 import Image from "next/image";
@@ -24,30 +23,18 @@ const KTDFI_SENDER_PRIVATE_KEY = process.env.NEXT_PUBLIC_KTDFI_SENDER_PRIVATE_KE
 
 // Constants
 const RECIPIENT_ADDRESS = "0x3B16949e2fec02E1f9A2557cE7FEBe74f780fADc";
-const EXCHANGE_RATE_REFRESH_INTERVAL = 300000; // 5 minutes in ms
 const MEMBERSHIP_FEE_THB = 800;
-const EXCHANGE_RATE_BUFFER = 0; // THB buffer to protect against fluctuations
 const MINIMUM_PAYMENT = 0.01; // Minimum POL to pay for transaction
-const FALLBACK_EXCHANGE_RATE = 3.97; // Fallback rate if all APIs fail
 
-// Exchange rate API endpoints
-const EXCHANGE_RATE_APIS = [
-  {
-    name: 'CoinGecko',
-    url: 'https://api.coingecko.com/api/v3/simple/price?ids=matic-network&vs_currencies=thb',
-    parser: (data: any) => data?.['matic-network']?.thb
-  },
-  {
-    name: 'Binance',
-    url: 'https://api.binance.com/api/v3/ticker/price?symbol=MATICTHB',
-    parser: (data: any) => parseFloat(data?.price)
-  },
-  {
-    name: 'Bitkub',
-    url: 'https://api.bitkub.com/api/market/ticker?s=THB_MATIC',
-    parser: (data: any) => data?.THB_MATIC?.last
-  }
-];
+// GitHub Raw URL for exchange rate configuration (same as other pages)
+const GITHUB_CONFIG_URL = "https://raw.githubusercontent.com/eastern-cyber/dproject-admin-1.0.2/main/public/exchange-rate-config.json";
+
+// Default values in case GitHub fetch fails
+const DEFAULT_CONFIG = {
+  fallbackExchangeRate: 3.97,
+  exchangeRateBuffer: 0,
+  refreshInterval: 300000 // 5 minutes
+};
 
 // Interfaces
 interface UserData {
@@ -97,6 +84,13 @@ type TransactionStatus = {
   error?: string;
 };
 
+// Configuration type for exchange rate settings
+type ExchangeRateConfig = {
+  fallbackExchangeRate: number;
+  exchangeRateBuffer: number;
+  refreshInterval: number;
+};
+
 export default function PlanB() {
   const account = useActiveAccount();
   const router = useRouter();
@@ -139,6 +133,7 @@ export default function PlanB() {
   const [adjustedExchangeRate, setAdjustedExchangeRate] = useState<number | null>(null);
   const [rateLoading, setRateLoading] = useState(true);
   const [transactionError, setTransactionError] = useState<string | null>(null);
+  const [exchangeRateConfig, setExchangeRateConfig] = useState<ExchangeRateConfig>(DEFAULT_CONFIG);
 
   // ADD KTDFI SENDER STATE
   const [ktdfiSenderAccount, setKtdfiSenderAccount] = useState<any>(null);
@@ -160,46 +155,79 @@ export default function PlanB() {
     console.log("Account changed:", account?.address);
   }, [account?.address]);
 
-  // Fetch exchange rate with multiple fallback APIs - Same as Plan A
-  const fetchExchangeRate = async (): Promise<number> => {
-    const errors = [];
-    
-    for (const api of EXCHANGE_RATE_APIS) {
+  // Fetch exchange rate configuration from GitHub
+  useEffect(() => {
+    const fetchExchangeRateConfig = async () => {
       try {
-        console.log(`Trying ${api.name} API...`);
-        const response = await fetch(api.url, {
-          method: 'GET',
+        setRateLoading(true);
+        const response = await fetch(GITHUB_CONFIG_URL, {
+          cache: 'no-store', // Always fetch fresh config
           headers: {
             'Accept': 'application/json',
-          },
+          }
         });
 
         if (!response.ok) {
-          throw new Error(`${api.name} responded with status: ${response.status}`);
+          throw new Error(`Failed to fetch config: ${response.status}`);
         }
 
-        const data = await response.json();
-        const rate = api.parser(data);
+        const config: ExchangeRateConfig = await response.json();
+        
+        // Validate config values
+        const validatedConfig = {
+          fallbackExchangeRate: config.fallbackExchangeRate > 0 ? config.fallbackExchangeRate : DEFAULT_CONFIG.fallbackExchangeRate,
+          exchangeRateBuffer: config.exchangeRateBuffer >= 0 ? config.exchangeRateBuffer : DEFAULT_CONFIG.exchangeRateBuffer,
+          refreshInterval: config.refreshInterval > 0 ? config.refreshInterval : DEFAULT_CONFIG.refreshInterval
+        };
 
-        if (rate && typeof rate === 'number' && rate > 0) {
-          console.log(`Successfully got rate from ${api.name}: ${rate}`);
-          return rate;
-        } else {
-          throw new Error(`Invalid rate from ${api.name}: ${rate}`);
-        }
-      } catch (err) {
-        const errorMsg = `${api.name} failed: ${err instanceof Error ? err.message : 'Unknown error'}`;
-        console.warn(errorMsg);
-        errors.push(errorMsg);
-        continue; // Try next API
+        setExchangeRateConfig(validatedConfig);
+        console.log('Exchange rate config loaded:', validatedConfig);
+      } catch (error) {
+        console.error('Failed to load exchange rate config from GitHub, using defaults:', error);
+        setExchangeRateConfig(DEFAULT_CONFIG);
+        setError("ไม่สามารถโหลดอัตราแลกเปลี่ยนจากระบบกลาง กรุณาตรวจสอบการเชื่อมต่ออินเทอร์เน็ต");
       }
-    }
+    };
 
-    // If all APIs fail, use fallback rate
-    console.warn('All exchange rate APIs failed, using fallback rate:', FALLBACK_EXCHANGE_RATE);
-    console.warn('Errors:', errors);
-    return FALLBACK_EXCHANGE_RATE;
-  };
+    fetchExchangeRateConfig();
+  }, []);
+
+  // Update exchange rate based on config
+  useEffect(() => {
+    const updateExchangeRate = async () => {
+      try {
+        setRateLoading(true);
+        // Use the configured fallback rate from GitHub
+        const currentRate = exchangeRateConfig.fallbackExchangeRate;
+        const adjustedRate = Math.max(0.01, currentRate - exchangeRateConfig.exchangeRateBuffer);
+        
+        setExchangeRate(currentRate);
+        setAdjustedExchangeRate(adjustedRate);
+        
+        console.log(`Exchange rate updated: ${currentRate} THB/POL (adjusted: ${adjustedRate})`);
+      } catch (err) {
+        console.error("Failed to get exchange rate:", err);
+        // Use fallback from config even if there's an error
+        const fallbackAdjustedRate = Math.max(
+          0.01, 
+          exchangeRateConfig.fallbackExchangeRate - exchangeRateConfig.exchangeRateBuffer
+        );
+        setExchangeRate(exchangeRateConfig.fallbackExchangeRate);
+        setAdjustedExchangeRate(fallbackAdjustedRate);
+        setError("ใช้อัตราแลกเปลี่ยนจากระบบกลาง เนื่องจากไม่สามารถโหลดอัตราปัจจุบันได้");
+      } finally {
+        setRateLoading(false);
+      }
+    };
+
+    if (exchangeRateConfig) {
+      updateExchangeRate();
+      
+      // Set up interval for refreshing based on config
+      const interval = setInterval(updateExchangeRate, exchangeRateConfig.refreshInterval);
+      return () => clearInterval(interval);
+    }
+  }, [exchangeRateConfig]);
 
   // Fetch user data
   useEffect(() => {
@@ -250,39 +278,6 @@ export default function PlanB() {
 
     fetchUserData();
   }, [account?.address]);
-
-  // Fetch THB to POL exchange rate and calculate adjusted rate - Updated to use new method
-  useEffect(() => {
-    const updateExchangeRate = async () => {
-      try {
-        setRateLoading(true);
-        const currentRate = await fetchExchangeRate();
-        const adjustedRate = Math.max(0.01, currentRate - EXCHANGE_RATE_BUFFER);
-        
-        setExchangeRate(currentRate);
-        setAdjustedExchangeRate(adjustedRate);
-        setError(null);
-        
-        // Show warning if using fallback rate
-        if (currentRate === FALLBACK_EXCHANGE_RATE) {
-          setError("ใช้อัตราแลกเปลี่ยนสำรอง เนื่องจากไม่สามารถโหลดอัตราปัจจุบันได้");
-        }
-      } catch (err) {
-        console.error("All exchange rate APIs failed:", err);
-        // Use fallback rate even if there's an error
-        const fallbackAdjustedRate = Math.max(0.01, FALLBACK_EXCHANGE_RATE - EXCHANGE_RATE_BUFFER);
-        setExchangeRate(FALLBACK_EXCHANGE_RATE);
-        setAdjustedExchangeRate(fallbackAdjustedRate);
-        setError("ใช้อัตราแลกเปลี่ยนสำรอง เนื่องจากไม่สามารถโหลดอัตราปัจจุบันได้");
-      } finally {
-        setRateLoading(false);
-      }
-    };
-
-    updateExchangeRate();
-    const interval = setInterval(updateExchangeRate, EXCHANGE_RATE_REFRESH_INTERVAL);
-    return () => clearInterval(interval);
-  }, []);
 
   // Fetch POL balance - Following Plan A pattern
   useEffect(() => {
@@ -733,6 +728,8 @@ export default function PlanB() {
             error: transactionError || "Transaction failed"
           } : null,
           total_amount_thb: MEMBERSHIP_FEE_THB,
+          config_source: GITHUB_CONFIG_URL,
+          exchange_rate_buffer: exchangeRateConfig.exchangeRateBuffer,
           timestamp: formattedDate
         }
       };
@@ -1014,6 +1011,19 @@ export default function PlanB() {
               PR by: {formatAddressForDisplay(userData.referrer_id)}<br />
             </div>
 
+            {adjustedExchangeRate && !isPlanB && (
+              <div className="mt-4 text-center">
+                <p className="text-sm text-gray-300">
+                  อัตราแลกเปลี่ยนปัจจุบัน: {adjustedExchangeRate.toFixed(4)} THB/POL
+                  {exchangeRateConfig && (
+                    <span className="text-[12px] text-yellow-400 block">
+                      (อัปเดตล่าสุดจากระบบกลาง)
+                    </span>
+                  )}
+                </p>
+              </div>
+            )}
+
             {/* Join Button Section */}
             {!isPlanB && userData && (
               <div className="w-full mt-6">
@@ -1073,6 +1083,7 @@ export default function PlanB() {
               {adjustedExchangeRate && (
                 <div className="mt-3 text-sm text-gray-300">
                   <p>อัตราแลกเปลี่ยน: {adjustedExchangeRate.toFixed(4)} THB/POL</p>
+                  <p className="text-xs text-gray-400">จากระบบกลาง</p>
                   <p>คิดเป็นมูลค่า: {(MEMBERSHIP_FEE_THB / adjustedExchangeRate).toFixed(4)} POL</p>
                 </div>
               )}
